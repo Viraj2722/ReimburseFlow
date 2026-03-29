@@ -52,17 +52,11 @@ export default function LoginPage() {
       return;
     }
 
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile } = await supabase
       .from("users")
       .select("role")
       .eq("id", user.id)
-      .single();
-
-    if (profileError) {
-      setError("Could not load your profile. Please contact your admin.");
-      setLoading(false);
-      return;
-    }
+      .maybeSingle();
 
     if (profile?.role === "manager") {
       router.push("/approvals");
