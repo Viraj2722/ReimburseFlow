@@ -1,6 +1,2 @@
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-);
+export { createBrowserSupabaseClient } from "@/lib/supabase/browser";
+export { createServerSupabaseClient } from "@/lib/supabase/server";

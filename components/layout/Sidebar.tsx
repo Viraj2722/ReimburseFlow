@@ -1,34 +1,67 @@
 'use client';
 import React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { 
   LayoutDashboard, 
   Receipt, 
   CheckCircle, 
   Users, 
-  Settings,
   LogOut,
-  Menu,
   X
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { createBrowserSupabaseClient } from '@/lib/supabase/browser';
 
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
+  userRole: 'admin' | 'manager' | 'employee';
 }
 
-const menuItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
-  { icon: Receipt, label: 'Expenses', href: '/expenses' },
-  { icon: CheckCircle, label: 'Approvals', href: '/approvals' },
-  { icon: Users, label: 'Users', href: '/users' },
-  { icon: Settings, label: 'Settings', href: '/settings' },
-];
+type MenuItem = {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  href: string;
+};
 
-export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
+function getRoleMenuItems(userRole: 'admin' | 'manager' | 'employee'): MenuItem[] {
+  if (userRole === 'admin') {
+    return [
+      { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
+      { icon: Receipt, label: 'All Expenses', href: '/expenses' },
+      { icon: CheckCircle, label: 'Approvals', href: '/approvals' },
+      { icon: Users, label: 'User Management', href: '/users' },
+      { icon: CheckCircle, label: 'Approval Rules', href: '/approval-rules' },
+    ];
+  }
+
+  if (userRole === 'manager') {
+    return [
+      { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
+      { icon: Receipt, label: 'Team Expenses', href: '/expenses' },
+      { icon: CheckCircle, label: 'Approvals', href: '/approvals' },
+    ];
+  }
+
+  return [
+    { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
+    { icon: Receipt, label: 'My Expenses', href: '/expenses' },
+  ];
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, userRole }) => {
+  const supabase = createBrowserSupabaseClient();
+  const router = useRouter();
   const pathname = usePathname();
+
+  const visibleMenuItems = getRoleMenuItems(userRole);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push('/login');
+    router.refresh();
+  };
 
   return (
     <>
@@ -63,7 +96,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
         {/* Navigation */}
         <nav className="p-4 space-y-2">
-          {menuItems.map((item) => {
+          {visibleMenuItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
             
@@ -88,7 +121,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
         {/* Logout Button */}
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-700">
-          <button className="flex items-center space-x-3 px-4 py-3 w-full rounded-lg text-slate-300 hover:bg-slate-700/50 hover:text-white transition-all">
+          <button onClick={handleLogout} className="flex items-center space-x-3 px-4 py-3 w-full rounded-lg text-slate-300 hover:bg-slate-700/50 hover:text-white transition-all">
             <LogOut className="w-5 h-5" />
             <span className="font-medium">Logout</span>
           </button>

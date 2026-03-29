@@ -2,41 +2,76 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
 
 export default function LoginPage() {
   const router = useRouter();
+  const supabase = createBrowserSupabaseClient();
 
   const [form, setForm] = useState({
     email: "",
     password: "",
   });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
 
-    // ✅ FRONTEND MOCK LOGIN (no backend needed)
     if (!form.email || !form.password) {
-      alert("Please fill all fields");
+      setError("Please fill all fields.");
       return;
     }
 
-    const fakeUser = {
-      name: "Ishita",
-      role: "admin",
-    };
+    setLoading(true);
 
-    // store mock auth
-    localStorage.setItem("token", "dummy-token");
-    localStorage.setItem("user", JSON.stringify(fakeUser));
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: form.email,
+      password: form.password,
+    });
 
-    alert("Login successful!");
+    if (signInError) {
+      setError(signInError.message);
+      setLoading(false);
+      return;
+    }
 
-    // redirect to dashboard
-    router.push("/dashboard");
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      setError("Login failed. Please try again.");
+      setLoading(false);
+      return;
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("users")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (profileError) {
+      setError("Could not load your profile. Please contact your admin.");
+      setLoading(false);
+      return;
+    }
+
+    if (profile?.role === "manager") {
+      router.push("/approvals");
+    } else {
+      router.push("/dashboard");
+    }
+
+    router.refresh();
+    setLoading(false);
   };
 
   return (
@@ -46,6 +81,10 @@ export default function LoginPage() {
         className="space-y-4 p-6 border rounded bg-white shadow-md w-80"
       >
         <h2 className="text-xl font-bold text-center">Login</h2>
+
+        {error ? (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded p-2">{error}</p>
+        ) : null}
 
         <input
           name="email"
@@ -63,14 +102,15 @@ export default function LoginPage() {
         />
 
         <button className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 w-full rounded">
-          Login
+          {loading ? "Signing in..." : "Login"}
         </button>
 
-        <p className="text-sm text-center">
-          Don’t have an account?{" "}
-          <a href="/signup" className="text-blue-500 underline">
-            Signup
-          </a>
+        <p className="text-xs text-slate-600 text-center leading-relaxed">
+          If you are setting up the first admin, use{" "}
+          <Link href="/signup" className="text-blue-600 underline">
+            Admin Signup
+          </Link>
+          . Managers and employees should only log in.
         </p>
       </form>
     </div>

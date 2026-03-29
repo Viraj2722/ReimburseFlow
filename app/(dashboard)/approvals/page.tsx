@@ -4,12 +4,24 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { mockCompany, mockExpenses, mockUsers } from '@/lib/mock-data';
 import { formatCurrency } from '@/lib/api';
 import { CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { useDashboardUser } from '@/components/layout/DashboardLayout';
 
 export default function ApprovalsPage() {
+  const { role } = useDashboardUser();
+
   // Load only pending expenses into state
   const [pendingApprovals, setPendingApprovals] = useState(() => 
     mockExpenses.filter(exp => exp.status === 'pending')
   );
+
+  if (role === 'employee') {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-3xl font-bold text-slate-900">Approvals</h1>
+        <p className="text-slate-600">Employees can track approval status from the Expenses page.</p>
+      </div>
+    );
+  }
 
   // Functional approve/reject action
   const handleAction = (id: string, action: 'approved' | 'rejected') => {

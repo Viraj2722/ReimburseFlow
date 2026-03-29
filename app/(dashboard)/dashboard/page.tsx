@@ -7,9 +7,11 @@ import { formatCurrency } from '@/lib/api';
 import { mockCompany, mockExpenses, mockUsers } from '@/lib/mock-data';
 import { isThisMonth, formatDistanceToNow } from 'date-fns';
 import { useRouter } from 'next/navigation';
+import { useDashboardUser } from '@/components/layout/DashboardLayout';
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { role } = useDashboardUser();
 
   // --- Dynamically calculate stats from mock data ---
   const totalExpenses = mockExpenses.reduce((sum, exp) => sum + exp.amountInCompanyCurrency, 0);
@@ -41,7 +43,7 @@ export default function DashboardPage() {
       {/* Page Header */}
       <div>
         <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
-        <p className="text-slate-600 mt-1">Welcome back! Here's your expense overview</p>
+        <p className="text-slate-600 mt-1">Welcome back! Here&apos;s your expense overview</p>
       </div>
 
       {/* Stats Grid */}
@@ -86,21 +88,43 @@ export default function DashboardPage() {
         {/* Quick Actions */}
         <Card>
           <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
+            <CardTitle>
+              {role === 'admin' ? 'Admin Actions' : role === 'manager' ? 'Manager Actions' : 'Employee Actions'}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <button onClick={() => router.push('/expenses/new')} className="w-full btn-primary flex items-center justify-center space-x-2">
               <Receipt className="w-4 h-4" />
-              <span>Submit Expense</span>
+              <span>{role === 'admin' ? 'Create Expense' : 'Submit Expense'}</span>
             </button>
-            <button onClick={() => router.push('/approvals')} className="w-full btn-secondary flex items-center justify-center space-x-2">
-              <CheckCircle className="w-4 h-4" />
-              <span>Review Approvals</span>
-            </button>
-            <button onClick={() => router.push('/reports')} className="w-full btn-ghost flex items-center justify-center space-x-2">
-              <DollarSign className="w-4 h-4" />
-              <span>View Reports</span>
-            </button>
+
+            {role !== 'employee' ? (
+              <button onClick={() => router.push('/approvals')} className="w-full btn-secondary flex items-center justify-center space-x-2">
+                <CheckCircle className="w-4 h-4" />
+                <span>{role === 'admin' ? 'Override / Review Approvals' : 'Approve / Reject Expenses'}</span>
+              </button>
+            ) : null}
+
+            {role === 'admin' ? (
+              <button onClick={() => router.push('/users')} className="w-full btn-ghost flex items-center justify-center space-x-2">
+                <DollarSign className="w-4 h-4" />
+                <span>Manage Users & Roles</span>
+              </button>
+            ) : null}
+
+            {role === 'admin' ? (
+              <button onClick={() => router.push('/approval-rules')} className="w-full btn-ghost flex items-center justify-center space-x-2">
+                <CheckCircle className="w-4 h-4" />
+                <span>Configure Approval Rules</span>
+              </button>
+            ) : null}
+
+            {role === 'employee' ? (
+              <button onClick={() => router.push('/expenses')} className="w-full btn-secondary flex items-center justify-center space-x-2">
+                <CheckCircle className="w-4 h-4" />
+                <span>Track Approval Status</span>
+              </button>
+            ) : null}
           </CardContent>
         </Card>
       </div>
