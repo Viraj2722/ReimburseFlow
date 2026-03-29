@@ -134,33 +134,96 @@ function extractAmount(text: string): number | undefined {
 function extractDate(text: string): string | undefined {
   const lines = text
     .split("\n")
-    .map(cleanLine)
+    .map((line) => line.trim())
     .filter(Boolean);
 
-  const preferredLine = lines.find((line) => /date/i.test(line));
+  const monthMap: Record<string, string> = {
+    january: "01",
+    february: "02",
+    march: "03",
+    april: "04",
+    may: "05",
+    june: "06",
+    july: "07",
+    august: "08",
+    september: "09",
+    october: "10",
+    november: "11",
+    december: "12",
+  };
 
-  const patterns = [
-    /\b(\d{2})[\/\-](\d{2})[\/\-](\d{4})\b/,
-    /\b(\d{4})[\/\-](\d{2})[\/\-](\d{2})\b/,
-    /\b(\d{2})[\/\-](\d{2})[\/\-](\d{2})\b/,
-  ];
+  const parseDateFromString = (value: string): string | undefined => {
+    // Format: 16 June 2025
+    const dayMonthYearMatch = value.match(
+      /\b(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})\b/i
+    );
 
-  const sources = preferredLine ? [preferredLine, text] : [text];
-
-  for (const source of sources) {
-    for (const pattern of patterns) {
-      const match = source.match(pattern);
-      if (!match) continue;
-
-      if (pattern === patterns[1]) {
-        const [, year, month, day] = match;
-        return `${year}-${month}-${day}`;
-      }
-
-      const [, day, month, yearPart] = match;
-      const year = yearPart.length === 2 ? `20${yearPart}` : yearPart;
-      return `${year}-${month}-${day}`;
+    if (dayMonthYearMatch) {
+      const [, day, month, year] = dayMonthYearMatch;
+      return `${year}-${monthMap[month.toLowerCase()]}-${day.padStart(2, "0")}`;
     }
+
+    // Format: June 16 2025
+    const monthDayYearMatch = value.match(
+      /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),?\s+(\d{4})\b/i
+    );
+
+    if (monthDayYearMatch) {
+      const [, month, day, year] = monthDayYearMatch;
+      return `${year}-${monthMap[month.toLowerCase()]}-${day.padStart(2, "0")}`;
+    }
+
+    // Format: 16/06/2025 or 16-06-2025
+    const numericMatch = value.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\b/);
+    if (numericMatch) {
+      const [, day, month, year] = numericMatch;
+      return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    }
+
+    // Format: 2025-06-16
+    const isoMatch = value.match(/\b(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\b/);
+    if (isoMatch) {
+      const [, year, month, day] = isoMatch;
+      return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    }
+
+    // Format: 16/06/25
+    const shortYearMatch = value.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})\b/);
+    if (shortYearMatch) {
+      const [, day, month, year] = shortYearMatch;
+      return `20${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    }
+
+    return undefined;
+  };
+
+  const negativeKeywords = /(pay by|due date|due|delivery date|ship date|expiry|exp date)/i;
+  const strongPositiveKeywords = /(invoice date|bill date|receipt date|transaction date|date:)/i;
+  const mildPositiveKeywords = /\bdate\b/i;
+
+  const strongPositiveLines = lines.filter(
+    (line) => strongPositiveKeywords.test(line) && !negativeKeywords.test(line)
+  );
+
+  for (const line of strongPositiveLines) {
+    const parsed = parseDateFromString(line);
+    if (parsed) return parsed;
+  }
+
+  const mildPositiveLines = lines.filter(
+    (line) => mildPositiveKeywords.test(line) && !negativeKeywords.test(line)
+  );
+
+  for (const line of mildPositiveLines) {
+    const parsed = parseDateFromString(line);
+    if (parsed) return parsed;
+  }
+
+  const neutralLines = lines.filter((line) => !negativeKeywords.test(line));
+
+  for (const line of neutralLines) {
+    const parsed = parseDateFromString(line);
+    if (parsed) return parsed;
   }
 
   return undefined;
