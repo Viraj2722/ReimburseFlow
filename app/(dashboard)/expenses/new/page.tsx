@@ -3,6 +3,17 @@
 import { useState, ChangeEvent, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
+import { convertCurrency, fetchExchangeRates } from "@/lib/api";
+
+type ExpenseCategory =
+  | "travel"
+  | "meals"
+  | "accommodation"
+  | "transport"
+  | "office_supplies"
+  | "entertainment"
+  | "other";
 
 type ExpenseFormData = {
   merchantName: string;
@@ -28,6 +39,7 @@ const expenseTypes = [
 
 export default function NewExpensePage() {
   const router = useRouter();
+  const supabase = createBrowserSupabaseClient();
 
   const [formData, setFormData] = useState<ExpenseFormData>({
     merchantName: "",
@@ -44,6 +56,17 @@ export default function NewExpensePage() {
   const [isScanning, setIsScanning] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState("");
+
+  const categoryMap: Record<string, ExpenseCategory> = {
+    Meals: "meals",
+    Travel: "travel",
+    Transport: "transport",
+    Accommodation: "accommodation",
+    "Office Supplies": "office_supplies",
+    Entertainment: "entertainment",
+    Medical: "other",
+    Other: "other",
+  };
 
   const handleChange = (
     e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -129,12 +152,83 @@ export default function NewExpensePage() {
       setIsSubmitting(true);
       setMessage("");
 
-      console.log("Submitted expense:", {
-        ...formData,
-        receipt: formData.receipt?.name || null,
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        throw new Error("You are not logged in.");
+      }
+
+      const { data: me, error: meError } = await supabase
+        .from("users")
+        .select("id, company_id")
+        .eq("id", user.id)
+        .single();
+
+      if (meError || !me) {
+        throw new Error("Could not load your user profile.");
+      }
+
+      const { data: company, error: companyError } = await supabase
+        .from("companies")
+        .select("currency")
+        .eq("id", me.company_id)
+        .single();
+
+      if (companyError || !company) {
+        throw new Error("Could not load company details.");
+      }
+
+      const amount = Number(formData.amount);
+      if (Number.isNaN(amount) || amount <= 0) {
+        throw new Error("Please provide a valid amount.");
+      }
+
+      const companyCurrency = company.currency;
+      let amountInCompanyCurrency = amount;
+
+      if (formData.currency !== companyCurrency) {
+        const rates = await fetchExchangeRates(companyCurrency);
+        if (!rates) {
+          throw new Error("Could not fetch exchange rates. Try again.");
+        }
+
+        amountInCompanyCurrency = convertCurrency(
+          amount,
+          formData.currency,
+          companyCurrency,
+          rates.rates,
+        );
+      }
+
+      const expenseLines = formData.expenseLines
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+      const { error: insertError } = await supabase.from("expenses").insert({
+        company_id: me.company_id,
+        employee_id: me.id,
+        amount,
+        currency: formData.currency,
+        amount_in_company_currency: amountInCompanyCurrency,
+        category: categoryMap[formData.expenseType] ?? "other",
+        description: formData.description,
+        expense_date: formData.date,
+        status: "pending",
+        receipt_url: null,
+        ocr_data: {
+          merchantName: formData.merchantName,
+          items: expenseLines,
+          sourceReceiptName: formData.receipt?.name ?? null,
+        },
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (insertError) {
+        throw new Error(insertError.message);
+      }
 
       setMessage("Expense submitted successfully.");
 

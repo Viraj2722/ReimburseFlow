@@ -107,8 +107,6 @@ export async function simulateReceiptOCR(file: File): Promise<OCRData> {
     merchantName: 'Acme Dining & Co.',
     amount: 84.50,
     date: new Date().toISOString().split('T')[0], // Returns YYYY-MM-DD
-    category: 'meals',
-    items: ['Steak Frites', 'Sparkling Water', 'Cheesecake'],
-    confidence: 0.94,
+    expenseLines: ['Steak Frites', 'Sparkling Water', 'Cheesecake'],
   };
 }

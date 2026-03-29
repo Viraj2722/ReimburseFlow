@@ -1,42 +1,124 @@
 'use client';
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { DollarSign, Clock, CheckCircle, XCircle, TrendingUp, Receipt } from 'lucide-react';
 import { StatusBadge } from '@/components/ui/Badge';
 import { formatCurrency } from '@/lib/api';
-import { mockCompany, mockExpenses, mockUsers } from '@/lib/mock-data';
 import { isThisMonth, formatDistanceToNow } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { useDashboardUser } from '@/components/layout/DashboardLayout';
+import { createBrowserSupabaseClient } from '@/lib/supabase/browser';
+
+type DashboardExpense = {
+  id: string;
+  description: string;
+  amount: number;
+  currency: string;
+  amount_in_company_currency: number;
+  status: 'draft' | 'pending' | 'approved' | 'rejected' | 'partially_approved';
+  expense_date: string;
+  created_at: string;
+  employee: {
+    full_name: string;
+  } | null;
+};
+
+type DashboardExpenseRow = Omit<DashboardExpense, 'employee'> & {
+  employee: { full_name: string }[] | { full_name: string } | null;
+};
 
 export default function DashboardPage() {
+  const supabase = useMemo(() => createBrowserSupabaseClient(), []);
   const router = useRouter();
   const { role } = useDashboardUser();
+  const [companyCurrency, setCompanyCurrency] = useState('USD');
+  const [expenses, setExpenses] = useState<DashboardExpense[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  // --- Dynamically calculate stats from mock data ---
-  const totalExpenses = mockExpenses.reduce((sum, exp) => sum + exp.amountInCompanyCurrency, 0);
-  const pendingApprovals = mockExpenses.filter(exp => exp.status === 'pending').length;
-  const approvedThisMonth = mockExpenses.filter(exp => exp.status === 'approved' && isThisMonth(exp.date)).length;
-  const rejectedCount = mockExpenses.filter(exp => exp.status === 'rejected').length;
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      setLoading(true);
+      setError('');
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        setError('You are not logged in.');
+        setLoading(false);
+        return;
+      }
+
+      const { data: me, error: meError } = await supabase
+        .from('users')
+        .select('company_id')
+        .eq('id', user.id)
+        .single();
+
+      if (meError || !me) {
+        setError('Could not load your profile.');
+        setLoading(false);
+        return;
+      }
+
+      const { data: company } = await supabase
+        .from('companies')
+        .select('currency')
+        .eq('id', me.company_id)
+        .single();
+
+      if (company?.currency) {
+        setCompanyCurrency(company.currency);
+      }
+
+      const { data, error: expensesError } = await supabase
+        .from('expenses')
+        .select('id, description, amount, currency, amount_in_company_currency, status, expense_date, created_at, employee:users!expenses_employee_id_fkey(full_name)')
+        .order('created_at', { ascending: false });
+
+      if (expensesError) {
+        setError(expensesError.message);
+        setLoading(false);
+        return;
+      }
+
+      const normalized = ((data ?? []) as DashboardExpenseRow[]).map((row) => ({
+        ...row,
+        employee: Array.isArray(row.employee) ? (row.employee[0] ?? null) : row.employee,
+      }));
+
+      setExpenses(normalized);
+      setLoading(false);
+    };
+
+    loadDashboardData();
+  }, [supabase]);
+
+  const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amount_in_company_currency, 0);
+  const pendingApprovals = expenses.filter(exp => exp.status === 'pending').length;
+  const approvedThisMonth = expenses.filter(
+    exp => exp.status === 'approved' && isThisMonth(new Date(exp.expense_date)),
+  ).length;
+  const rejectedCount = expenses.filter(exp => exp.status === 'rejected').length;
 
   const stats = [
-    { title: 'Total Expenses', value: formatCurrency(totalExpenses, mockCompany.currency), change: '+12.5%', icon: DollarSign, color: 'from-primary-500 to-primary-600' },
-    { title: 'Pending Approvals', value: pendingApprovals.toString(), change: '-3', icon: Clock, color: 'from-warning-500 to-warning-600' },
-    { title: 'Approved This Month', value: approvedThisMonth.toString(), change: '+8', icon: CheckCircle, color: 'from-success-500 to-success-600' },
-    { title: 'Rejected', value: rejectedCount.toString(), change: '+1', icon: XCircle, color: 'from-danger-500 to-danger-600' },
+    { title: 'Total Expenses', value: formatCurrency(totalExpenses, companyCurrency), change: `${expenses.length} total`, icon: DollarSign, color: 'from-primary-500 to-primary-600' },
+    { title: 'Pending Approvals', value: pendingApprovals.toString(), change: 'Awaiting review', icon: Clock, color: 'from-warning-500 to-warning-600' },
+    { title: 'Approved This Month', value: approvedThisMonth.toString(), change: 'Current month', icon: CheckCircle, color: 'from-success-500 to-success-600' },
+    { title: 'Rejected', value: rejectedCount.toString(), change: 'Needs rework', icon: XCircle, color: 'from-danger-500 to-danger-600' },
   ];
 
-  // --- Get recent expenses from mock data ---
-  const recentExpenses = mockExpenses
-    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-    .slice(0, 4)
-    .map(expense => {
-        const employee = mockUsers.find(u => u.id === expense.employeeId);
-        return {
-            ...expense,
-            employeeName: employee?.name || 'Unknown',
-        };
-    });
+  const recentExpenses = expenses.slice(0, 6);
+
+  if (loading) {
+    return <p className="text-slate-600">Loading dashboard...</p>;
+  }
+
+  if (error) {
+    return <p className="text-red-600">Failed to load dashboard: {error}</p>;
+  }
 
   return (
     <div className="space-y-6 animate-in">
@@ -80,7 +162,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="h-64 flex items-center justify-center bg-slate-50 rounded-lg">
-              <p className="text-slate-400">Chart component goes here</p>
+              <p className="text-slate-400">Trend chart can be added here after analytics API integration.</p>
             </div>
           </CardContent>
         </Card>
@@ -158,13 +240,13 @@ export default function DashboardPage() {
                       <p className="font-medium text-slate-900">{expense.description}</p>
                     </td>
                     <td className="py-3 px-4">
-                      <p className="text-sm text-slate-600">{expense.employeeName}</p>
+                      <p className="text-sm text-slate-600">{expense.employee?.full_name ?? 'Unknown'}</p>
                     </td>
                     <td className="py-3 px-4">
                       <p className="font-medium text-slate-900">{formatCurrency(expense.amount, expense.currency)}</p>
                     </td>
                     <td className="py-3 px-4">
-                      <p className="text-sm text-slate-600">{formatDistanceToNow(expense.date, { addSuffix: true })}</p>
+                      <p className="text-sm text-slate-600">{formatDistanceToNow(new Date(expense.created_at), { addSuffix: true })}</p>
                     </td>
                     <td className="py-3 px-4">
                       <StatusBadge status={expense.status} />
