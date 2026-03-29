@@ -67,37 +67,50 @@ export default function NewExpensePage() {
   };
 
   const handleScanReceipt = async () => {
-    if (!formData.receipt) {
-      setMessage("Please upload a receipt first.");
-      return;
+  if (!formData.receipt) {
+    setMessage("Please upload a receipt first.");
+    return;
+  }
+
+  try {
+    setIsScanning(true);
+    setMessage("Scanning receipt...");
+
+    const data = new FormData();
+    data.append("file", formData.receipt);
+
+    const res = await fetch("/api/ocr", {
+      method: "POST",
+      body: data,
+    });
+
+    const result = await res.json();
+
+    if (!res.ok) {
+      throw new Error(result.error || "OCR failed");
     }
 
-    try {
-      setIsScanning(true);
-      setMessage("Scanning receipt...");
+    const ocr = result.data;
 
-      // Temporary mock OCR autofill
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+    setFormData((prev) => ({
+      ...prev,
+      merchantName: ocr.merchantName || prev.merchantName,
+      expenseType: ocr.expenseType || prev.expenseType,
+      description: ocr.description || prev.description,
+      expenseLines: ocr.expenseLines?.join("\n") || prev.expenseLines,
+      amount: ocr.amount ? String(ocr.amount) : prev.amount,
+      currency: ocr.currency || prev.currency,
+      date: ocr.date || prev.date,
+    }));
 
-      setFormData((prev) => ({
-        ...prev,
-        merchantName: prev.merchantName || "McDonald's",
-        expenseType: prev.expenseType || "Meals",
-        description: prev.description || "Meal expense from scanned receipt",
-        expenseLines: prev.expenseLines || "Burger Meal\nFries\nCoke",
-        amount: prev.amount || "450",
-        currency: prev.currency || "INR",
-        date: prev.date || new Date().toISOString().split("T")[0],
-      }));
-
-      setMessage("Receipt scanned successfully. Please verify the details.");
-    } catch (error) {
-      console.error(error);
-      setMessage("Failed to scan receipt.");
-    } finally {
-      setIsScanning(false);
-    }
-  };
+    setMessage("Receipt scanned successfully. Please verify the details.");
+  } catch (error) {
+    console.error(error);
+    setMessage(error instanceof Error ? error.message : "Failed to scan receipt.");
+  } finally {
+    setIsScanning(false);
+  }
+};
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
