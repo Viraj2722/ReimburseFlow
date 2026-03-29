@@ -61,9 +61,11 @@ export interface OCRData {
   merchantName?: string;
   amount?: number;
   date?: string;
-  category?: string;
-  items?: string[];
-  confidence: number;
+  description?: string;
+  expenseLines?: string[];
+  expenseType?: string;
+  currency?: string;
+  rawText?: string;
 }
 
 export interface Approval {
